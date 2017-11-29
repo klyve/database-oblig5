@@ -13,44 +13,49 @@ class XMLController extends MVC\Controller {
     private $xml;
     public function parseFile($fileName) {
         $this->loadFile($fileName);
-        $this->parseCities();
-        $this->parseClubs();
-        $this->parseSkiers();
-        $this->parseSeason();
+        // echo "Running php script";
+        $this->parseCities(); // DONE
+        $this->parseClubs(); // DONE
+        $this->parseSkiers(); // DONE
+        $this->parseSeason(); // DONE
         $this->parseSeasons();
         $this->calculateDistance();
     }
 
+    public function getNode($item, $node) {
+        return $item->getElementsByTagName($node)[0]->nodeValue;
+    }
+
     public function loadFile($fileName) {
-        $this->xml = simplexml_load_file($fileName); 
+        $doc = new DOMDocument();
+        $doc->load($fileName);
+        $this->xml = new DOMXpath($doc);
     }
 
     public function parseCities() {
-        $data = $this->xml->xpath('//SkierLogs/Clubs/Club');
+        $data = $this->xml->query('//SkierLogs/Clubs/Club');
         foreach($data as $item) {
-            $row = simplexml_load_string($item->asXML());
             $city = new City();
-            $city->city = $row->City;
-            $city->county = $row->County;
+            $city->city = $this->getNode($item, 'City');
+            $city->county = $this->getNode($item, 'County');
             $city->saveUnique();
         }
     }
     public function parseClubs() {
-        $data = $this->xml->xpath('//SkierLogs/Clubs/Club');
+        $data = $this->xml->query('//SkierLogs/Clubs/Club');
         foreach($data as $item) {
-            $row = simplexml_load_string($item->asXML());
             $city = new City();
             $city->find([
-                'city' => $row->City,
-                'county' => $row->County
+                'city' => $this->getNode($item, 'City'),
+                'county' => $this->getNode($item, 'County')
             ]);
-            $attributes = $row->attributes();
-            $id = $attributes->id;
+
+            $id = $item->getAttribute('id');
             
             // Create a new club
             $club = new Clubs();
             $club->cityid = $city->id;
-            $club->name = $row->Name;
+            $club->name = $this->getNode($item, 'Name');
             $club->clubid = $id;
             $club->saveUnique();
             
@@ -58,17 +63,13 @@ class XMLController extends MVC\Controller {
     }
 
     public function parseSkiers() {
-        $data = $this->xml->xpath('//SkierLogs/Skiers/Skier');
+        $data = $this->xml->query('//SkierLogs/Skiers/Skier');
         foreach($data as $item) {
-            $row = simplexml_load_string($item->asXML());
-            $attributes = $row->attributes();
-
             $skier = new Skiers();
-            $skier->username = $attributes->userName;
-            $skier->firstName = $row->FirstName;
-            $skier->lastName = $row->LastName;
-            $skier->yearOfBirth = $row->YearOfBirth;
-            
+            $skier->username = $item->getAttribute('userName');
+            $skier->firstName = $this->getNode($item, 'FirstName');
+            $skier->lastName = $this->getNode($item, 'LastName');
+            $skier->yearOfBirth = $this->getNode($item, 'YearOfBirth');
             $skier->saveUnique();
         }
     }
@@ -104,10 +105,9 @@ class XMLController extends MVC\Controller {
     }
 
     public function parseSeason() {
-        $data = $this->xml->xpath('//SkierLogs/Season');
+        $data = $this->xml->query('//SkierLogs/Season');
         foreach($data as $item) {
-            $seasonPath = $item->xpath('@fallYear');
-            $fallYear = $seasonPath[0];
+            $fallYear = $item->getAttribute('fallYear');
             $season = new Season();
             $season->year = $fallYear;
             $season->saveUnique();
@@ -116,33 +116,26 @@ class XMLController extends MVC\Controller {
     }
 
     public function parseSeasons() {
-        $data = $this->xml->xpath('//SkierLogs/Season/Skiers');
+        $data = $this->xml->query('//SkierLogs/Season/Skiers');
         foreach($data as $item) {
-            $row = simplexml_load_string($item->asXML());
-            $seasonPath = $item->xpath('../@fallYear');
-            $fallYear = $seasonPath[0];
-
+            $seasonPath = $this->xml->query('../@fallYear', $item);
+            $fallYear = $seasonPath[0]->value;
             
-
-            $clubAttributes = $row->attributes();
             $clubId = "";
-            if(isset($clubAttributes->clubId)) {
-                $clubId = $clubAttributes->clubId;           
+            if($item->hasAttribute('clubId')) {
+                $clubId = $item->getAttribute('clubId');           
             }
-            
-            $skiers = $item->xpath('Skier');
-            foreach($skiers as $skier) {
-                $skierRow = simplexml_load_string($skier->asXML());
-                $skierAttributes = $skierRow->attributes();
 
-                $username = $skierAttributes->userName;
-                $logs = $skier->xpath('Log/Entry');
+            $skiers = $this->xml->query('Skier', $item);
+            foreach($skiers as $skier) {
+
+                $username = $skier->getAttribute('userName');
+                $logs = $this->xml->query('Log/Entry', $skier);
 
                 foreach($logs as $log) {
-                    $logRow = simplexml_load_string($log->asXML());
-                    $date = $logRow->Date;
-                    $area = $logRow->Area;
-                    $distance = $logRow->Distance;
+                    $date = $this->getNode($log, 'Date');
+                    $area = $this->getNode($log, 'Area');
+                    $distance = $this->getNode($log, 'Distance');
                     
                     $person = new Skiers();
                     $person->find(['username' => $username]);
